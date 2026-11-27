@@ -55,3 +55,7 @@ the user's desktop.
 - Thirty duel simulations still pass after slowing health loss. An early-round check ensures the game remains in progress with healthy fighters after eight simulated seconds.
 - Both modes hold the scoreboard through its celebration and then reset for a new round after six seconds. Native scoreboard snapshots were reviewed at the entrance and during the updated-score hold.
 - The installed app was observed in co-op boss mode with actual reported Codex and Antigravity models, a live Codex SCAN combo and a completed party wave. Physical finger taps and a real reported passing-test finisher were not independently exercised; their event handling was checked with fixtures.
+
+## Game gallery
+
+`./scripts/render-game-gallery.sh` exports a native 116-frame loop with example models and fresh synthetic action events. The fixture reaches a party victory, shows the sports scoreboard, and advances into the next wave. Combat time is compressed for the preview; no live sessions, hooks or desktop captures are used.

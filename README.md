@@ -4,11 +4,9 @@ Animated AI coding companions for the MacBook Pro Touch Bar. Codex, Claude Code
 and Antigravity share the free space, act out their current work, and stay awake
 while their apps are open.
 
-![Animated demo of Codex, Clawd and Gemini-chan sharing the Touch Bar playground.](docs/images/companions-demo.gif)
+![Native co-op boss, action combos and animated sports scoreboard.](docs/images/boss-and-scoreboard.gif)
 
-*[Still preview](docs/images/companions-preview.png). The loop uses demo data
-rendered by the app's real AppKit drawing code. Enlarged character studies are
-shown above the native Touch Bar surface.*
+*[Still preview](docs/images/game-gallery.png). Synthetic example data, rendered by the app’s real AppKit code. The fight is time-compressed; the animated scoreboard closes before the next wave.*
 
 ## Pixel Arena and the co-op bug boss
 

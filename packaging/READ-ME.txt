@@ -1,0 +1,39 @@
+TOUCH BAR PLAYGROUND 1.6
+Apple Silicon • macOS 13 or later
+
+INSTALL
+1. Drag Touch Bar Playground.app to Applications.
+2. Open it from Applications. Choose Bug boss, Battle!, or Live activity.
+3. Use the blue companion in the menu bar to open the controls.
+
+No compiler, Xcode or Python is needed to run the app. Codex activity is read
+locally. A built-in Touch Bar is required for hardware output; the desktop
+preview works without one. Intel Macs are not supported by this download.
+
+FIRST OPEN
+This community build is ad-hoc signed, not Apple Developer ID signed or
+notarized. macOS may block its first launch. If you trust this download,
+try opening the installed app, then go to System Settings > Privacy & Security
+and choose Open Anyway for Touch Bar Playground. See Apple's instructions:
+https://support.apple.com/en-us/102445
+
+OPTIONAL CLAUDE CODE + ANTIGRAVITY CONNECTIONS
+After installing the app, double-click Connect-Tools.command in this folder.
+It requires Python 3 (https://www.python.org/downloads/macos/).
+It adds observational hooks and backs up existing settings. Restart your
+existing tool sessions afterward. This is optional; preview and Codex work
+without running it. If macOS blocks this helper, use the same first-open
+approval process for the helper. No administrator password is needed by it.
+Keep connect-tools.py beside Connect-Tools.command while running the helper.
+
+Disconnect later using Terminal from this folder:
+python3 connect-tools.py --remove
+
+UPDATES
+Quit the running app from its menu bar menu before replacing it.
+If you move the installed app after connecting hooks, run the helper again.
+
+SOURCE, CONTROLS AND LICENSES
+https://github.com/RaymanMoha/touchbar-playground
+https://github.com/RaymanMoha/touchbar-playground/blob/main/docs/BATTLE.md
+Licenses and third-party notices are included in this folder.

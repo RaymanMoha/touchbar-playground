@@ -32,7 +32,17 @@ Choose **Bug boss** to team up against a shared enemy with work-triggered scans,
   and turn duration when available. Missing metadata is shown as unavailable.
 - **Local operation:** no API keys, network service or runtime package downloads.
 
-## Clone and install
+## Download and install (no build needed)
+
+**[Download the latest release](https://github.com/RaymanMoha/touchbar-playground/releases/latest)** — choose the **arm64 DMG**, open it, then drag **Touch Bar Playground.app** to **Applications**. Open the app and choose **Bug boss**, **Battle!**, or **Live activity** from its controls.
+
+Requires **Apple Silicon and macOS 13+**. No Xcode, compiler or Python is needed to run the app. A built-in Touch Bar is needed for hardware output; the desktop preview works without one. Intel is not supported by this download.
+
+This community build is **ad-hoc signed, not Developer ID signed or notarized**. If macOS blocks first launch and you trust the download, try opening the installed app, then use **System Settings → Privacy & Security → Open Anyway** for it. [Apple’s first-open instructions](https://support.apple.com/en-us/102445).
+
+Codex activity works locally. For optional Claude Code and Antigravity hooks, run **Connect-Tools.command** included in the download after installing the app; this helper requires **Python 3**, preserves existing settings with backups, and requires restarting existing tool sessions. The included read-me explains setup and removal. Quit the app before replacing an older copy.
+
+## Build from source
 
 Requirements: **Apple Silicon Mac, macOS 13+, Xcode's Swift/Clang toolchain, and
 Python 3**. A built-in Touch Bar is needed for hardware output. The desktop

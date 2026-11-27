@@ -11,12 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
     var pollTimer: Timer?
     var statusText: NSTextField!
     var modeText: NSTextField!
+    var hintText: NSTextField!
     var pickers: [NSPopUpButton] = []
     var modelLabels: [NSTextField] = []
     var actionLabels: [NSTextField] = []
     var animationFrame = 0
     var shown = false
     var screenAsleep = false
+    var battle: CompanionBattle?
     var cycle = false
     var cycleStarted = 0.0
     let identifier = NSTouchBarItem.Identifier("local.touchbarplayground.field")
@@ -35,11 +37,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         bar.principalItemIdentifier = identifier
         barView.onTap = { [weak self] in self?.activate($0) }
         preview.onTap = barView.onTap
+        barView.onExitBattle = { [weak self] in self?.liveMode() }
+        preview.onExitBattle = barView.onExitBattle
         model.changed = { [weak self] in self?.refresh() }
         model.poll()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
             guard let self, !self.screenAsleep else { return }
             self.animationFrame += 1
+            if let battle = self.battle {
+                battle.advance(1.0 / 24)
+                if self.shown { self.barView.needsDisplay = true }
+                if self.window.isVisible { self.preview.needsDisplay = true }
+                if self.animationFrame % 8 == 0 { self.refresh() }
+                return
+            }
             if self.cycle {
                 let elapsed = Int((ProcessInfo.processInfo.systemUptime - self.cycleStarted) / 8)
                 let scenes: [[Tool: Mood]] = [
@@ -65,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.screenAsleep = true }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.screenAsleep = false }
         if ProcessInfo.processInfo.arguments.contains("--demo") { startDemo() }
+        if ProcessInfo.processInfo.arguments.contains("--battle") { startBattle() }
         showBar(); showWindow()
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--diagnostics"), ProcessInfo.processInfo.arguments.count > i + 1 {
             let path = ProcessInfo.processInfo.arguments[i + 1]
@@ -98,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         statusItem.button?.image = image
         statusItem.button?.toolTip = "Touch Bar Playground"
         let menu = NSMenu()
-        for (title, selector) in [("Open playground", #selector(showWindow)), ("Show Touch Bar playground", #selector(showBar)), ("Hide Touch Bar playground", #selector(hideBar)), ("Try the animations", #selector(startDemo)), ("Use live activity", #selector(liveMode))] {
+        for (title, selector) in [("Open playground", #selector(showWindow)), ("Show Touch Bar playground", #selector(showBar)), ("Hide Touch Bar playground", #selector(hideBar)), ("Try the animations", #selector(startDemo)), ("Use live activity", #selector(liveMode)), ("Companion battle", #selector(startBattle))] {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: ""); item.target = self; menu.addItem(item)
         }
         menu.addItem(.separator())
@@ -147,11 +159,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         statusText = label("Connecting to local activity…", x: 35, y: 126, width: 830, size: 11, color: .secondaryLabelColor)
         button("Try animations", x: 30, y: 78, width: 143, action: #selector(startDemo))
         button("Live activity", x: 180, y: 78, width: 127, action: #selector(liveMode))
+        button("Battle!", x: 316, y: 78, width: 110, action: #selector(startBattle))
         button("Show on Touch Bar", x: 550, y: 78, width: 164, action: #selector(showBar))
         button("Hide", x: 724, y: 78, width: 145, action: #selector(hideBar))
-        _ = label("Tap a companion to visit its app. Tap empty space to call one over.", x: 35, y: 32, width: 830, size: 11, color: .secondaryLabelColor)
+        hintText = label("Tap a companion to visit its app. Tap empty space to call one over.", x: 35, y: 32, width: 830, size: 11, color: .secondaryLabelColor)
     }
     func refresh() {
+        if let battle {
+            hintText.stringValue = "Tap a fighter to cheer + shield. Tap empty ground to dash. Tap LIVE at the right to return to coding."
+            modeText.stringValue = "COMPANION BATTLE · ROUND \(battle.round) · \(shown ? "TOUCH BAR SHOWN" : "TOUCH BAR HIDDEN")"
+            statusText.stringValue = battle.caption
+            for (i, tool) in Tool.allCases.enumerated() {
+                pickers[i].isEnabled = false
+                let fighter = battle.fighters.first { $0.tool == tool }!
+                modelLabels[i].stringValue = "HP \(fighter.health)/100 · Wins \(battle.scores[tool, default: 0])"
+                modelLabels[i].toolTip = "Fictional game stats"
+                modelLabels[i].setAccessibilityLabel("\(tool.title) battle health: \(fighter.health), wins: \(battle.scores[tool, default: 0])")
+                actionLabels[i].stringValue = fighter.health == 0 ? "Knocked out · back next round" : battle.selected == tool ? "Your fighter · tap to boost" : "Autobattling · tap to cheer"
+                actionLabels[i].setAccessibilityLabel(actionLabels[i].stringValue)
+            }
+            preview.needsDisplay = true; barView.needsDisplay = true
+            return
+        }
+        hintText.stringValue = "Tap a companion to visit its app. Tap empty space to call one over."
+        for picker in pickers { picker.isEnabled = true }
         let moods = model.moods
         for (i, tool) in Tool.allCases.enumerated() {
             pickers[i].selectItem(at: Mood.allCases.firstIndex(of: moods[tool, default: .idle])!)
@@ -176,8 +207,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         model.demoMoods[Tool.allCases[sender.tag]] = Mood.allCases[sender.indexOfSelectedItem]
         refresh()
     }
-    @objc func startDemo() { cycleStarted = ProcessInfo.processInfo.systemUptime; cycle = true; model.demo = true; refresh() }
-    @objc func liveMode() { cycle = false; model.demo = false; model.poll(); refresh() }
+    @objc func startDemo() { endBattle(); cycleStarted = ProcessInfo.processInfo.systemUptime; cycle = true; model.demo = true; refresh() }
+    @objc func liveMode() { endBattle(); cycle = false; model.demo = false; model.poll(); refresh() }
+    func endBattle() {
+        battle = nil; barView.battle = nil; preview.battle = nil
+        for view in [barView, preview] { view.setAccessibilityLabel("Companion playground. Tap a companion to visit its coding app.") }
+    }
+    @objc func startBattle() {
+        cycle = false
+        let game = CompanionBattle(seed: UInt64(Date().timeIntervalSince1970 * 1000))
+        battle = game; barView.battle = game; preview.battle = game
+        for view in [barView, preview] { view.setAccessibilityLabel("Companion battle. Tap a fighter to shield and attack. Tap empty ground to dash. Tap LIVE at the right to return to coding activity.") }
+        refresh()
+    }
     @objc func showBar() {
         shown = PlaygroundPresent(bar)
         refresh()

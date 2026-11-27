@@ -110,8 +110,50 @@ if arguments.contains("--self-test") {
     check(model.moods[.claude] == .resting, "idle Claude terminal sessions remain awake")
     idleSession.sessionOpen = false; model.activities["terminal-check"] = idleSession
     check(model.moods[.claude] == .idle, "ended terminal sessions return to sleep")
+    for seed in 1...30 {
+        let game = CompanionBattle(seed: UInt64(seed))
+        check(game.phase == .ready && game.fighters.allSatisfy { $0.health == 100 }, "round starts with full health and countdown")
+        var steps = 0
+        while game.phase != .finished && steps < 2400 {
+            game.advance(1.0/60); steps += 1
+            check(game.fighters.allSatisfy { (0...100).contains($0.health) && (0.05...0.95).contains($0.x) }, "fighters stay in bounds with valid health")
+        }
+        check(game.phase == .finished && game.winner != nil, "autonomous rounds always finish")
+        check(game.fighters.contains { $0.health < 100 }, "shots actually damage fighters")
+        check(game.scores.values.reduce(0,+) == 1, "one score awarded per round")
+        game.advance(4.1)
+        check(game.round == 2 && game.phase == .ready && game.fighters.allSatisfy { $0.health == 100 }, "next round resets health and retains score")
+        check(game.scores.values.reduce(0,+) == 1, "winner celebration cannot award duplicate scores")
+    }
+    let boosted = CompanionBattle(seed: 9); boosted.advance(1.6)
+    boosted.cheer(.codex)
+    let hero = boosted.fighters.first { $0.tool == .codex }!
+    check(hero.shieldUntil > boosted.time && boosted.selected == .codex, "tapping selects and shields a fighter")
+    let shotCount = boosted.shots.count
+    boosted.cheer(.codex)
+    check(boosted.shots.count == shotCount, "special attacks respect cooldown")
+    boosted.advance(2.1)
+    let beforeDash = boosted.fighters.first { $0.tool == .codex }!.x
+    boosted.dash(to: beforeDash < 0.5 ? 1 : 0)
+    check(abs(boosted.fighters.first { $0.tool == .codex }!.x - beforeDash) <= 0.131, "dash is bounded")
+    let first = CompanionBattle(seed: 123), second = CompanionBattle(seed: 123)
+    for _ in 0..<300 { first.advance(1.0/60); second.advance(1.0/60) }
+    check(first.fighters.map { $0.health } == second.fighters.map { $0.health } && first.fighters.map { $0.x } == second.fighters.map { $0.x }, "seeded battles reproduce deterministically")
+    print("PASS: 30 autonomous battles, collision damage, winner scores, rematches, shields, cooldowns, dash bounds and deterministic replay")
     try FileManager.default.removeItem(at: dir)
     print("PASS: models, aggregation, layout, action clocks, recap evidence, deduplication and open-app idle presence")
+    exit(0)
+}
+if let index = arguments.firstIndex(of: "--render-battle"), arguments.count > index + 1 {
+    _ = NSApplication.shared
+    let model = PlaygroundModel()
+    let game = CompanionBattle(seed: 42)
+    let seconds = arguments.firstIndex(of: "--at").flatMap { arguments.count > $0 + 1 ? Double(arguments[$0+1]) : nil } ?? 4
+    game.advance(seconds)
+    let view = PlaygroundView(model: model); view.battle = game
+    view.frame = NSRect(x:0,y:0,width:1370,height:60)
+    try view.snapshot(to: arguments[index+1])
+    print("Battle frame: round \(game.round), phase \(game.phase), health \(game.fighters.map { $0.health })")
     exit(0)
 }
 if let index = arguments.firstIndex(of: "--render"), arguments.count > index + 1 {

@@ -76,6 +76,8 @@ enum PixelArt {
 final class PlaygroundView: NSView {
     let model: PlaygroundModel
     var onTap: ((Tool) -> Void)?
+    var battle: CompanionBattle?
+    var onExitBattle: (() -> Void)?
     var positions: [Tool: Double] = [:]
     var petUntil: [Tool: Double] = [:]
     var timeOverride: Double?
@@ -106,6 +108,7 @@ final class PlaygroundView: NSView {
         let width = bounds.width / scale
         context.imageInterpolation = .none
         context.shouldAntialias = false
+        if let battle { drawBattle(battle, width: width); return }
         let t = timeOverride ?? model.animationTime
         let moods = model.moods
         let layout = PlaygroundLayout(width: width, moods: moods)
@@ -227,6 +230,14 @@ final class PlaygroundView: NSView {
     @objc func tapped(_ gesture: NSClickGestureRecognizer) {
         let point = gesture.location(in: self)
         let x = point.x / (bounds.height / 30)
+        if let battle {
+            let width = bounds.width / (bounds.height / 30)
+            if x > width - 42 { onExitBattle?(); return }
+            if let tool = Tool.allCases.min(by: { abs((positions[$0] ?? 0)+11-x) < abs((positions[$1] ?? 0)+11-x) }), abs((positions[tool] ?? 0)+11-x) < 24 {
+                battle.cheer(tool)
+            } else { battle.dash(to: (x-112)/max(80,width-160)) }
+            needsDisplay = true; return
+        }
         if let tool = Tool.allCases.min(by: { abs((positions[$0] ?? 0) + 10 - x) < abs((positions[$1] ?? 0) + 10 - x) }) {
             petUntil[tool] = ProcessInfo.processInfo.systemUptime + 2
             if abs((positions[tool] ?? 0) + 10 - x) < 65 { onTap?(tool) }

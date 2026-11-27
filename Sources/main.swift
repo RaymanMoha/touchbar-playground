@@ -110,8 +110,197 @@ if arguments.contains("--self-test") {
     check(model.moods[.claude] == .resting, "idle Claude terminal sessions remain awake")
     idleSession.sessionOpen = false; model.activities["terminal-check"] = idleSession
     check(model.moods[.claude] == .idle, "ended terminal sessions return to sleep")
+    for seed in 1...30 {
+        let game = CompanionBattle(seed: UInt64(seed))
+        check(game.phase == .ready && game.fighters.allSatisfy { $0.health == 100 }, "round starts with full health and countdown")
+        var steps = 0
+        while game.phase != .finished && steps < 6600 {
+            game.advance(1.0/60); steps += 1
+            check(game.fighters.allSatisfy { (0...100).contains($0.health) && (0.05...0.95).contains($0.x) }, "fighters stay in bounds with valid health")
+        }
+        check(game.phase == .finished && game.winner != nil, "autonomous rounds always finish")
+        check(game.winner.map { winner in game.fighters.contains { $0.tool == winner } } == true, "winner belongs to the fighter roster")
+        check(game.fighters.contains { $0.health < 100 }, "shots actually damage fighters")
+        check(game.scores.values.reduce(0,+) == 1, "one score awarded per round")
+        game.advance(4.1)
+        check(game.phase == .finished && game.round == 1, "sports scoreboard stays visible through its celebration hold")
+        game.advance(2)
+        check(game.round == 2 && game.phase == .ready && game.fighters.allSatisfy { $0.health == 100 }, "next round resets health and retains score")
+        check(game.scores.values.reduce(0,+) == 1, "winner celebration cannot award duplicate scores")
+    }
+    let boosted = CompanionBattle(seed: 9); boosted.advance(1.6)
+    boosted.cheer(.codex)
+    let hero = boosted.fighters.first { $0.tool == .codex }!
+    check(hero.shieldUntil > boosted.time && boosted.selected == .codex, "tapping selects and shields a fighter")
+    let shotCount = boosted.shots.count
+    boosted.cheer(.codex)
+    check(boosted.shots.count == shotCount, "special attacks respect cooldown")
+    boosted.advance(2.1)
+    let beforeDash = boosted.fighters.first { $0.tool == .codex }!.x
+    boosted.dash(to: beforeDash < 0.5 ? 1 : 0)
+    check(abs(boosted.fighters.first { $0.tool == .codex }!.x - beforeDash) <= 0.131, "dash is bounded")
+    let first = CompanionBattle(seed: 123), second = CompanionBattle(seed: 123)
+    for _ in 0..<300 { first.advance(1.0/60); second.advance(1.0/60) }
+    check(first.fighters.map { $0.health } == second.fighters.map { $0.health } && first.fighters.map { $0.x } == second.fighters.map { $0.x }, "seeded battles reproduce deterministically")
+    let liveGame = CompanionBattle(seed: 71)
+    let observations: [Tool: CompanionBattle.LiveActivity] = [
+        .codex: .init(mood:.working, modelName:"fixture-codex", caption:"Testing", action:.testing),
+        .claude: .init(mood:.resting, modelName:"Last: fixture-claude", caption:"Idle", action:.thinking),
+        .antigravity: .init(mood:.attention, modelName:"fixture-gemini", caption:"Waiting · approval", action:.waiting)
+    ]
+    liveGame.updateLive(observations); liveGame.advance(10)
+    let worker = liveGame.fighters.first { $0.tool == .codex }!
+    let idler = liveGame.fighters.first { $0.tool == .claude }!
+    let waiting = liveGame.fighters.first { $0.tool == .antigravity }!
+    check(worker.energy > 79 && worker.workSeconds > 9.9, "observed working time charges energy")
+    check(idler.energy < 21 && idler.idleSeconds > 9.9, "idle time drains energy")
+    check(abs(waiting.energy - 50) < 0.01, "approval waiting does not drain energy")
+    check(liveGame.power(worker) > liveGame.power(idler), "working fighters attack harder and faster")
+    check(liveGame.incomingDamage(10, for:idler) > liveGame.incomingDamage(10, for:worker), "idle fighters take extra damage")
+    var resumed = observations
+    resumed[.claude] = .init(mood:.working,modelName:"fixture-claude",caption:"Editing",action:.editing)
+    liveGame.updateLive(resumed); liveGame.advance(1)
+    check(liveGame.fighters.first { $0.tool == .claude }!.idleSeconds == 0, "resuming work clears idle timer immediately")
+    liveGame.advance(100)
+    check(liveGame.fighters.allSatisfy { (0...100).contains($0.energy) }, "energy stays bounded across rematches")
+    let loadingBattle = CompanionBattle()
+    loadingBattle.syncLive(from:PlaygroundModel()); loadingBattle.advance(5)
+    check(loadingBattle.fighters.allSatisfy { abs($0.energy-50)<0.01 && $0.idleSeconds == 0 }, "source warmup never penalizes tools as idle")
+    check(loadingBattle.live[.codex]?.modelName == "Connecting…", "source warmup is distinct from unavailable metadata")
+    check(PlaygroundModel.date("2026-11-27T15:00:00.123Z") != nil && PlaygroundModel.date("2026-11-27T15:00:00Z") != nil, "cached timestamp parsing supports fractional and whole seconds")
+    let observedModel = PlaygroundModel()
+    observedModel.activities = ["fixture": Activity(tool:.codex,session:"fixture",state:.working,time:now,modelName:"reported-model",effort:"high",progress:WorkProgress(action:.reading,detail:"Fixture.swift",actionStartedAt:now-2))]
+    let observedBattle = CompanionBattle()
+    observedBattle.syncLive(from:observedModel)
+    check(observedBattle.live[.codex]?.modelName == "reported-model" && observedBattle.live[.codex]?.effort == "high", "battle keeps reported model and effort")
+    check(observedBattle.live[.codex]?.caption.contains("Fixture.swift") == true, "battle preserves the live action caption")
+    check(observedBattle.live[.claude]?.modelName == "Model unavailable", "missing model metadata stays unavailable")
+    for centers in [[Tool.codex:80.0,.claude:320.0,.antigravity:560.0], [.codex:300,.claude:325,.antigravity:350]] {
+        let tags=BattleTagLayout.make(centers:centers,width:685)
+        check(Set(tags.map(\.tool)) == Set(Tool.allCases), "each fighter retains its own attached label")
+        for tag in tags {
+            check(tag.x >= 0 && tag.x+tag.width <= 641, "attached labels stay inside the strip")
+            let owner=centers[tag.tool]!
+            check(tag.leftSide ? abs(tag.x+tag.width-(owner-18))<0.01 : abs(tag.x-(owner+20))<0.01, "labels remain adjacent to the owning avatar")
+        }
+        let visible=tags.filter { $0.width >= 28 }.sorted { $0.x < $1.x }
+        for i in 1..<visible.count { check(visible[i-1].x+visible[i-1].width <= visible[i].x, "neighbour labels never overlap") }
+    }
+    // Check every fighter can cross the old lane boundaries, not only a shared team envelope.
+    let roaming = CompanionBattle(seed: 8)
+    var minima = [Double](repeating:1,count:3), maxima = [Double](repeating:0,count:3)
+    for _ in 0..<4800 {
+        roaming.advance(1.0/60)
+        for i in 0..<3 { minima[i] = min(minima[i],roaming.fighters[i].x); maxima[i] = max(maxima[i],roaming.fighters[i].x) }
+    }
+    check((0..<3).allSatisfy { minima[$0] < 0.18 && maxima[$0] > 0.82 }, "all three fighters roam both ends of the arena")
+    var testEvidence=Activity(tool:.codex,session:"test-evidence",state:.working,time:now)
+    testEvidence=advanceActivity(testEvidence,previous:nil,observation:ActionObservation(action:.testing,completed:true,id:"pass",testPassed:true))
+    check(testEvidence.progress?.currentTestPassed == true, "a known current test pass is available to abilities")
+    var unknownRun=testEvidence; unknownRun.time += 1
+    unknownRun=advanceActivity(unknownRun,previous:testEvidence,observation:ActionObservation(action:.testing,id:"new-test"))
+    let unknownEnd=advanceActivity(unknownRun,previous:unknownRun,observation:ActionObservation(action:.testing,completed:true,id:"unknown-end"))
+    check(unknownEnd.progress?.lastTestPassed == true && unknownEnd.progress?.currentTestPassed == nil, "old recap success cannot become a new test finisher")
+    let raid = CompanionBattle(seed: 12, mode:.boss)
+    let stamp = 1000.0
+    var raidData: [Tool:CompanionBattle.LiveActivity] = [
+        .codex:.init(mood:.working,modelName:"fixture-codex",caption:"Reading",action:.reading,eventID:"baseline",eventTime:stamp),
+        .claude:.init(mood:.working,modelName:"fixture-claude",caption:"Editing",action:.editing,eventID:"baseline",eventTime:stamp),
+        .antigravity:.init(mood:.working,modelName:"fixture-gemini",caption:"Searching",action:.searching,eventID:"baseline",eventTime:stamp)
+    ]
+    raid.updateLive(raidData,now:stamp); raid.advance(1.6)
+    check(raid.combo == 0, "initial live observations do not replay old abilities")
+    raidData[.codex]?.eventID="scan-1"; raidData[.codex]?.eventTime=1001
+    raid.updateLive(raidData,now:1001)
+    check(raid.combo == 1 && raid.boss!.exposedUntil>raid.time, "fresh searching/reading reveals a boss weak spot")
+    let shotsAfterScan=raid.shots.count
+    raid.updateLive(raidData,now:1001)
+    check(raid.combo == 1 && raid.shots.count == shotsAfterScan, "polling cannot replay an action ability")
+    raid.advance(0.2)
+    raidData[.codex]?.eventID="test-pass"; raidData[.codex]?.action = .testing
+    raidData[.codex]?.testPassed=true; raidData[.codex]?.actionCompleted=true; raidData[.codex]?.eventTime=1001.2
+    raid.updateLive(raidData,now:1001.2)
+    check(raid.combo == 2 && raid.fighters[0].move == "TEST FINISHER", "reported passing tests trigger a finisher even after a quick preceding action")
+    let afterPass=raid.shots.count
+    raid.updateLive(raidData,now:1001.3)
+    check(raid.shots.count == afterPass && raid.combo == 2, "test finishers are deduplicated")
+    raidData[.codex]?.eventID="unknown-test"; raidData[.codex]?.testPassed=nil
+    raid.updateLive(raidData,now:1001.3)
+    check(raid.combo == 2, "unknown test outcomes cannot produce finishers")
+    raidData[.codex]?.eventID="failed-test"; raidData[.codex]?.failed=true; raidData[.codex]?.testPassed=true
+    raid.updateLive(raidData,now:1001.4)
+    check(raid.combo == 2, "failed actions never award a combo")
+    raidData[.claude]?.eventID="old-edit"; raidData[.claude]?.eventTime=900
+    raid.updateLive(raidData,now:1001.5)
+    check(raid.combo == 2, "stale concurrent-session actions never award a combo")
+    raidData[.claude]?.eventID="edit-1"; raidData[.claude]?.eventTime=1002
+    raid.updateLive(raidData,now:1002)
+    check(raid.combo == 3 && raid.fighters[1].shieldUntil>raid.time, "editing raises a personal shield and extends the team chain")
+    let friendly = CompanionBattle(seed:3,mode:.boss)
+    friendly.advance(2.7)
+    check(friendly.fighters.allSatisfy { $0.health == 100 }, "party fire cannot damage companions before the first boss attack")
+    var partyVictories=0, bossVictories=0
+    for seed in 1...12 {
+        let game=CompanionBattle(seed:UInt64(seed),mode:.boss)
+        var states:[Tool:CompanionBattle.LiveActivity]=[:]
+        for tool in Tool.allCases { states[tool] = .init(mood:seed<=6 || tool != .claude ? .working : .idle,modelName:"fixture",caption:"fixture",action:.thinking) }
+        game.updateLive(states)
+        var steps=0
+        while game.phase != .finished && steps < 6000 {
+            game.advance(1.0/60); steps += 1
+            if seed<=6 && steps%120 == 0 { game.cheer(.codex) }
+            check((0...game.boss!.maxHealth).contains(game.boss!.health), "boss health stays bounded")
+            check(game.fighters.allSatisfy { (0...100).contains($0.health) }, "party health stays bounded")
+        }
+        check(game.phase == .finished, "boss encounters always resolve")
+        if game.boss!.defeated { partyVictories += 1 } else { bossVictories += 1 }
+        check(game.teamWins+game.bossWins == 1, "encounter scores are awarded once")
+        game.advance(4.1)
+        check(game.phase == .finished && game.round == 1, "sports scoreboard stays visible through its celebration hold")
+        game.advance(2)
+        check(game.round == 2 && game.boss!.health == game.boss!.maxHealth && game.fighters.allSatisfy { $0.health==100 }, "new boss waves reset boss and party health")
+        check(game.teamWins+game.bossWins == 1, "celebrations do not duplicate boss scores")
+    }
+    check(partyVictories>0 && bossVictories>0, "both party victories and boss victories are reachable")
+    let pacing=CompanionBattle(seed:42)
+    pacing.advance(8)
+    check(pacing.phase == .fighting && pacing.fighters.allSatisfy { $0.health>45 }, "slower damage leaves time to enjoy the early battle")
+    print("PASS: 12 boss encounters, both outcomes, no friendly fire, live action deduplication, test finishers, stale/unknown/failed guards, rematches and slower pacing")
+    print("PASS: live models/actions, work charging, idle drain/damage, approval protection, attached metadata and full-width roaming")
+    print("PASS: 30 autonomous battles, collision damage, winner scores, rematches, shields, cooldowns, dash bounds and deterministic replay")
     try FileManager.default.removeItem(at: dir)
     print("PASS: models, aggregation, layout, action clocks, recap evidence, deduplication and open-app idle presence")
+    exit(0)
+}
+if let index = arguments.firstIndex(of: "--render-battle"), arguments.count > index + 1 {
+    _ = NSApplication.shared
+    let model = PlaygroundModel()
+    let game = CompanionBattle(seed: 42, mode:arguments.contains("--boss") ? .boss : .duel)
+    if arguments.contains("--example-live") {
+        let now = Date().timeIntervalSince1970
+        model.openTools = [.codex, .claude, .antigravity]
+        model.activities = [
+            "example-codex":Activity(tool:.codex,session:"example",state:.working,time:now,modelName:"example-codex-model",progress:WorkProgress(action:.testing,actionStartedAt:now-3)),
+            "example-claude":Activity(tool:.claude,session:"example",state:.idle,time:now,modelName:"example-claude-model"),
+            "example-gemini":Activity(tool:.antigravity,session:"example",state:.working,time:now,modelName:"example-gemini-model",progress:WorkProgress(action:.editing,detail:"Example.swift",actionStartedAt:now-8))
+        ]
+        game.syncLive(from:model)
+    }
+    let seconds = arguments.firstIndex(of: "--at").flatMap { arguments.count > $0 + 1 ? Double(arguments[$0+1]) : nil } ?? 4
+    game.advance(seconds)
+    if arguments.contains("--example-live") && arguments.contains("--boss-combo") {
+        let now=Date().timeIntervalSince1970
+        var data=game.live
+        data[.codex]?.eventID="example-baseline"; data[.codex]?.eventTime=now; game.updateLive(data,now:now)
+        data[.codex]?.eventID="example-scan"; data[.codex]?.action = .searching; data[.codex]?.eventTime=now; game.updateLive(data,now:now)
+        game.advance(1)
+        data[.codex]?.eventID="example-test-pass"; data[.codex]?.action = .testing; data[.codex]?.testPassed=true; data[.codex]?.actionCompleted=true; game.updateLive(data,now:now)
+        game.advance(0.1)
+    }
+    let view = PlaygroundView(model: model); view.battle = game
+    view.frame = NSRect(x:0,y:0,width:1370,height:60)
+    try view.snapshot(to: arguments[index+1])
+    print("Battle frame: round \(game.round), phase \(game.phase), health \(game.fighters.map { $0.health })")
     exit(0)
 }
 if let index = arguments.firstIndex(of: "--render"), arguments.count > index + 1 {

@@ -10,7 +10,13 @@ enum GeminiSprite {
         let url = Bundle.main.url(forResource: "gemini-chan", withExtension: "png")
             ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Assets/gemini-chan.png")
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary),
+              let bitmap = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                     space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        // Decode the atlas once. Cropping a lazily decoded PNG can otherwise
+        // decompress the entire atlas again on every tiny animated draw.
+        bitmap.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return bitmap.makeImage()
     }()
     static var frames: [Int: NSImage] = [:]
 

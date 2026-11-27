@@ -111,6 +111,7 @@ final class PlaygroundModel {
     let animationOrigin = ProcessInfo.processInfo.systemUptime
     var animationTime: Double { ProcessInfo.processInfo.systemUptime - animationOrigin }
     var changed: (() -> Void)?
+    private(set) var hasLoadedActivity = false
     private var cursors: [String: UInt64] = [:]
     private var partial: [String: Data] = [:]
     private var codexFiles: [URL] = []
@@ -214,7 +215,7 @@ final class PlaygroundModel {
             if now.timeIntervalSince(lastDiscovery) > 8 {
                 lastDiscovery = now
                 var discovered: [URL] = []
-                let formatter = DateFormatter(); formatter.dateFormat = "yyyy/MM/dd"; formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.calendar = Calendar(identifier: .gregorian); formatter.dateFormat = "yyyy/MM/dd"; formatter.timeZone = TimeZone(secondsFromGMT: 0)
                 let base = ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
                 for offset in 0...1 {
                     let day = formatter.string(from: now.addingTimeInterval(-Double(offset) * 86400))
@@ -287,12 +288,17 @@ final class PlaygroundModel {
                     if update.time >= (activities[key]?.time ?? 0) { activities[key] = update }
                 }
                 activities = activities.filter { now.timeIntervalSince1970 - $0.value.time < 8 * 3600 }
-                polling = false; changed?()
+                hasLoadedActivity = true; polling = false; changed?()
             }
         }
     }
+    // Reuse immutable formatters when replaying a bounded session tail. Creating
+    // one for every JSONL record makes the first live update unnecessarily slow.
+    private static let fractionalDate: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return formatter
+    }()
+    private static let wholeDate = ISO8601DateFormatter()
     static func date(_ string: String) -> Date? {
-        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.date(from: string) ?? ISO8601DateFormatter().date(from: string)
+        fractionalDate.date(from: string) ?? wholeDate.date(from: string)
     }
 }

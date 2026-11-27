@@ -4,11 +4,19 @@ Animated AI coding companions for the MacBook Pro Touch Bar. Codex, Claude Code
 and Antigravity share the free space, act out their current work, and stay awake
 while their apps are open.
 
-![Animated demo of Codex, Clawd and Gemini-chan sharing the Touch Bar playground.](docs/images/companions-demo.gif)
+![Native co-op boss, action combos and animated sports scoreboard.](docs/images/boss-and-scoreboard.gif)
 
-*[Still preview](docs/images/companions-preview.png). The loop uses demo data
-rendered by the app's real AppKit drawing code. Enlarged character studies are
-shown above the native Touch Bar surface.*
+*[Still preview](docs/images/game-gallery.png). Synthetic example data, rendered by the app’s real AppKit code. The fight is time-compressed; the animated scoreboard closes before the next wave.*
+
+## Pixel Arena and the co-op bug boss
+
+Choose **Bug boss** to team up against a shared enemy with work-triggered scans, shields and test finishers, or **Battle!** for a playful free-for-all on the Touch Bar. Tap a fighter to shield it and trigger a special; tap empty ground to dash and fire. Compact live model/action labels stay attached to their own moving avatars, collapsing details during close passes. Working charges energy; idle drains it and increases incoming damage. All three fighters roam the full strip. Health and energy are shared with the desktop preview. Slower rounds end with an animated sports scoreboard before the next game begins. Tap **LIVE** to return to coding activity. [Controls and details](docs/BATTLE.md).
+
+![Native co-op bug boss with clearly labelled example models.](docs/images/bug-boss-preview.png)
+
+![Animated sports scoreboard shown during its score-update hold.](docs/images/sports-scoreboard-preview.png)
+
+*These stills use synthetic example data rendered by the native game code. In the app the boss, attacks and scoreboard are animated.*
 
 ## What you get
 

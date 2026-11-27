@@ -2,7 +2,7 @@
 
 Press **Battle!** in the playground window or choose **Companion battle** from its menu bar icon. The same live-linked game appears in the desktop strip and on the Touch Bar.
 
-The three companions join a friendly, fictional free-for-all. They move, hop over low shots, fire coloured projectiles and lose health on impact. A countdown starts each round. The last fighter standing wins; a 35-second limit resolves a stalled round by remaining health. Winners celebrate, keep their score, and start a fresh round after four seconds.
+The three companions join a friendly, fictional free-for-all. They move, hop over low shots, fire coloured projectiles and lose health on impact. A countdown starts each round. The last fighter standing wins; a 75-second limit resolves a stalled round by remaining health. Winners celebrate, keep their score, and start a fresh round after six seconds.
 
 ## Controls and readable information
 
@@ -10,7 +10,7 @@ The three companions join a friendly, fictional free-for-all. They move, hop ove
 - **Tap empty arena ground:** your selected fighter dashes toward it and fires. Dashes have a one-second cooldown shared with specials.
 - **Tap LIVE at the right:** return to live coding activity. The window's **Live activity** button does the same.
 - **Health and energy:** coloured health bars above each fighter, with a thinner mint energy bar beneath.
-- **Attached labels:** each avatar carries its own name, model and action. Its label stays next to it, connected by a short matching-colour tether. Name/HP/energy/wins occupy the first line when space permits; the model and action use the next two lines. Long text truncates inside its space. During close passes, details collapse to a tiny owner badge rather than jumping elsewhere or covering another fighter. The desktop window always shows all three tools' full live details and game stats in fixed cards.
+- **Attached labels:** each avatar carries its own name, model and action. Its label stays next to it, connected by a short matching-colour tether. Name/HP/energy occupy the first line when space permits; the model and action use the next two lines. Long text truncates inside its space. During close passes, details collapse to a tiny owner badge rather than jumping elsewhere or covering another fighter. The desktop window always shows all three tools' full live details and game stats in fixed cards.
 - **Knocked out:** a companion stays visible but dim, with a KO label. It returns with full health next round.
 - **Winner:** a star and winner caption appear on that fighter's own label. There is no shared rotating panel that can show another fighter's data during a celebration.
 
@@ -50,3 +50,27 @@ open "Touch Bar Playground.app" --args --battle
 ```
 
 If an instance is already open, use its Battle button instead; a second instance activates the existing app.
+
+## Co-op bug boss (v1.6)
+
+Choose **Bug boss** beside Battle, or launch with `--boss`. The companions form a party and shoot a shared pixel bug; party projectiles cannot hurt companions. The bug has a separate red health bar, telegraphs an incoming attack with `!`, and turns yellow while a scan exposes its weak spot. Its HP or current combo multiplier appears below it.
+
+Fresh reported work actions trigger moves:
+
+| Reported action | Game move |
+| --- | --- |
+| Reading, searching, checking the screen | SCAN: expose the bug for four seconds |
+| Editing | PATCH SHIELD: protect that companion for two seconds |
+| Building | FORTIFY: briefly shield the whole party |
+| Running a command | TERMINAL BOLT: fire a stronger shot |
+| Starting tests | CHARGING |
+| Completing tests with a known passing result | TEST FINISHER: a larger projectile strengthened by the current chain |
+| Replying or completing a task | RALLY: restore a small amount of party health |
+
+Moves chain for six seconds between actions, up to ×9. Duplicate polls, first-observed historical state, stale events, unknown test outcomes, failed actions and approval waits do not manufacture abilities. A previous test pass retained for a completion recap is distinct from the current test result. Known current passes can trigger the finisher even when a short test completes within the normal ability cooldown.
+
+Health now drains more slowly in both modes: incoming companion hit damage is approximately one fifth of the previous setting, with a minimum of one HP and the existing idle multipliers. Ordinary shots fire less frequently. The duel timeout is 75 seconds and the boss timeout is 90 seconds. A first-wave bug has 600 HP and reduces incoming party damage; later waves increase its health up to 840. This supports a longer encounter while leaving meaningful boosts from live work and taps.
+
+At the end of either mode, a sports-style scoreboard slides in. It announces the winner, increments the series score, adds pixel confetti and a next-round countdown, then slides away. Celebrations last six seconds before the next countdown starts. Avatar labels no longer carry win/loss counts; the scoreboard is the place for series scores. The LIVE exit remains accessible at the right throughout.
+
+Additional self-checks cover twelve boss encounters with both outcomes, no party friendly fire, fresh-action abilities, deduplication, old/unknown/failed-result guards, combo chains, encounter scores, wave resets and slower early health loss.

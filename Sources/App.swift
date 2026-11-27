@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.screenAsleep = false }
         if ProcessInfo.processInfo.arguments.contains("--demo") { startDemo() }
         if ProcessInfo.processInfo.arguments.contains("--battle") { startBattle() }
+        if ProcessInfo.processInfo.arguments.contains("--boss") { startBoss() }
         showBar(); showWindow()
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--diagnostics"), ProcessInfo.processInfo.arguments.count > i + 1 {
             let path = ProcessInfo.processInfo.arguments[i + 1]
@@ -111,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         statusItem.button?.image = image
         statusItem.button?.toolTip = "Touch Bar Playground"
         let menu = NSMenu()
-        for (title, selector) in [("Open playground", #selector(showWindow)), ("Show Touch Bar playground", #selector(showBar)), ("Hide Touch Bar playground", #selector(hideBar)), ("Try the animations", #selector(startDemo)), ("Use live activity", #selector(liveMode)), ("Companion battle", #selector(startBattle))] {
+        for (title, selector) in [("Open playground", #selector(showWindow)), ("Show Touch Bar playground", #selector(showBar)), ("Hide Touch Bar playground", #selector(hideBar)), ("Try the animations", #selector(startDemo)), ("Use live activity", #selector(liveMode)), ("Companion battle", #selector(startBattle)), ("Co-op bug boss", #selector(startBoss))] {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: ""); item.target = self; menu.addItem(item)
         }
         menu.addItem(.separator())
@@ -163,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         button("Try animations", x: 30, y: 78, width: 143, action: #selector(startDemo))
         button("Live activity", x: 180, y: 78, width: 127, action: #selector(liveMode))
         button("Battle!", x: 316, y: 78, width: 110, action: #selector(startBattle))
+        button("Bug boss", x: 433, y: 78, width: 110, action: #selector(startBoss))
         button("Show on Touch Bar", x: 550, y: 78, width: 164, action: #selector(showBar))
         button("Hide", x: 724, y: 78, width: 145, action: #selector(hideBar))
         hintText = label("Tap a companion to visit its app. Tap empty space to call one over.", x: 35, y: 32, width: 830, size: 11, color: .secondaryLabelColor)
@@ -172,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
             battle.syncLive(from: model)
             statusText.frame.origin.y = 108
             hintText.stringValue = "Tap a fighter: shield + special. Empty ground: dash. Labels stay with their fighter; full details below. LIVE exits."
-            modeText.stringValue = "LIVE BATTLE · ROUND \(battle.round) · \(shown ? "TOUCH BAR SHOWN" : "TOUCH BAR HIDDEN")"
+            modeText.stringValue = "\(battle.mode == .boss ? "CO-OP BUG BOSS" : "LIVE BATTLE") · ROUND \(battle.round) · \(shown ? "TOUCH BAR SHOWN" : "TOUCH BAR HIDDEN")"
             statusText.stringValue = battle.caption
             for (i, tool) in Tool.allCases.enumerated() {
                 pickers[i].isEnabled = false
@@ -186,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
                 actionLabels[i].stringValue = activity.caption
                 actionLabels[i].toolTip = activity.caption
                 actionLabels[i].setAccessibilityLabel("\(tool.title) live action: \(activity.caption)")
-                let stats = "HP \(fighter.health) · Energy \(Int(fighter.energy)) · Wins \(battle.scores[tool, default:0]) · Work \(elapsedText(fighter.workSeconds))"
+                let stats = "HP \(fighter.health) · Energy \(Int(fighter.energy)) · Work \(elapsedText(fighter.workSeconds))"
                 let idle = fighter.idleSeconds > 1 ? " · Idle \(elapsedText(fighter.idleSeconds))" : ""
                 battleStatsLabels[i].isHidden = false
                 battleStatsLabels[i].stringValue = stats + idle
@@ -231,9 +233,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         battle = nil; barView.battle = nil; preview.battle = nil
         for view in [barView, preview] { view.setAccessibilityLabel("Companion playground. Tap a companion to visit its coding app.") }
     }
-    @objc func startBattle() {
+    @objc func startBattle() { startGame(.duel) }
+    @objc func startBoss() { startGame(.boss) }
+    func startGame(_ mode: CompanionBattle.Mode) {
         cycle = false; model.demo = false; model.poll()
-        let game = CompanionBattle(seed: UInt64(Date().timeIntervalSince1970 * 1000))
+        let game = CompanionBattle(seed: UInt64(Date().timeIntervalSince1970 * 1000), mode:mode)
         game.syncLive(from: model)
         battle = game; barView.battle = game; preview.battle = game
         for view in [barView, preview] { view.setAccessibilityLabel("Companion battle. Tap a fighter to shield and attack. Tap empty ground to dash. Tap LIVE at the right to return to coding activity.") }

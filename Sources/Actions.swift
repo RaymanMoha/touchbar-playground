@@ -29,6 +29,7 @@ struct WorkProgress: Codable {
     var actionFailed = false
     var changedFileIDs: [String] = []
     var lastTestPassed: Bool?
+    var currentTestPassed: Bool? = nil
     var observedIDs: [String] = []
 }
 struct ActionObservation {
@@ -66,6 +67,7 @@ func advanceActivity(_ incoming: Activity, previous: Activity?, observation: Act
     if let id = observation.id { progress.observedIDs.append(id); progress.observedIDs = Array(progress.observedIDs.suffix(512)) }
     if !observation.completed { progress.actionStartedAt = incoming.time }
     else if progress.action != observation.action || progress.detail != observation.detail { progress.actionStartedAt = nil }
+    progress.currentTestPassed = observation.action == .testing && observation.completed ? observation.testPassed : nil
     progress.action = observation.action; progress.detail = observation.detail
     progress.actionEndedAt = observation.completed ? incoming.time : nil
     progress.actionFailed = observation.failed

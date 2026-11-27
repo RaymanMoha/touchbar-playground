@@ -29,3 +29,11 @@ Claude and Antigravity action/completion parsing has been checked with hook
 fixtures. Real Claude action/completion transitions and a complete live
 Antigravity action/completion run were not independently exercised. Physical
 finger taps remain unconfirmed.
+
+## Shareable gallery
+
+`./scripts/render-demo.sh` renders a 72-frame looping GIF and a PNG poster using
+the native drawing code. The exported loop was checked for changing frames,
+reading/attention/completion/idle phases and complete, unobscured character
+studies. It uses synthetic data and does not read a live session or screenshot
+the user's desktop.

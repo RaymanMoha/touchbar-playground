@@ -4,10 +4,11 @@ Animated AI coding companions for the MacBook Pro Touch Bar. Codex, Claude Code
 and Antigravity share the free space, act out their current work, and stay awake
 while their apps are open.
 
-![Native Touch Bar preview with Codex, Clawd and Gemini-chan. Labels use demo data.](docs/images/touchbar-preview.png)
+![Animated demo of Codex, Clawd and Gemini-chan sharing the Touch Bar playground.](docs/images/companions-demo.gif)
 
-*Native AppKit rendering, with example model names and task states. The app
-animates these characters; this image is a still preview.*
+*[Still preview](docs/images/companions-preview.png). The loop uses demo data
+rendered by the app's real AppKit drawing code. Enlarged character studies are
+shown above the native Touch Bar surface.*
 
 ## What you get
 
@@ -99,6 +100,27 @@ python3 scripts/connect-tools.py --remove
 
 This removes this utility's hooks while preserving other settings. Then quit the
 app and remove it from `~/Applications` if you no longer want it.
+
+## Reproduce the animated example
+
+```sh
+./scripts/render-demo.sh
+```
+
+This exports `docs/images/companions-demo.gif` and a PNG poster using AppKit and
+ImageIO. It needs the same Apple Silicon/Xcode toolchain as the app, with no
+additional packages. It does not connect hooks or read live tool activity.
+
+The roughly twelve-second loop shows:
+
+1. Reading with all three companions working.
+2. Testing while Claude asks for attention.
+3. A demo completion recap and celebration.
+4. Open apps staying awake and idle.
+
+Model names, filenames, test marks and recap counts in this gallery are example
+data. The small black strip is the real native playground renderer; the larger
+figures make the character designs easier to inspect.
 
 ## Verify a build
 

@@ -1,0 +1,31 @@
+# Verification
+
+Checked on an Apple M2 MacBook Pro with a built-in Touch Bar running macOS 27.2.
+The deployment target is macOS 13. Intel builds and other Touch Bar models have
+not been independently checked.
+
+## Automated local checks
+
+- Swift/Objective-C build and strict verification of the ad-hoc app signature.
+- Concurrent-session aggregation, state expiry and model rotation.
+- Model attribution reset between turns and compatibility with older events.
+- Action clock start/freeze, duplicate events, confirmed file counts and recap
+  reset. Missing test exit status does not become a passing result.
+- Open-app idle presence and Claude terminal session closure.
+- Non-destructive hook merging, idempotence, neutral hook output and normalized
+  metadata privacy checks. Hook tests use a temporary state root.
+- Gemini-chan's installed atlas matches the original included PNG. All animation
+  rows used by the app have nonempty frames and preserve a common foot anchor.
+
+## Native and live checks
+
+- Native Touch Bar view attachment at 685 × 30 points.
+- Live Codex work/model metadata, action captions, and show/hide controls.
+- Live Antigravity model reporting and open-app idle visibility.
+- Desktop preview reactions, the three selected companions and demo completion
+  recaps. Demo images and GIFs use example data, not live task results.
+
+Claude and Antigravity action/completion parsing has been checked with hook
+fixtures. Real Claude action/completion transitions and a complete live
+Antigravity action/completion run were not independently exercised. Physical
+finger taps remain unconfirmed.

@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+*.app/
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*
+*.playground-backup-*
+*.playground-new

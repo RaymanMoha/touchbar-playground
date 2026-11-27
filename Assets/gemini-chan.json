@@ -1,0 +1,8 @@
+{
+  "id": "gemini-chan",
+  "displayName": "Gemini",
+  "description": "16-bit pixel-art Gemini companion with full multi-frame animations",
+  "spriteVersionNumber": 3,
+  "themeColor": "#818CF8",
+  "spritesheetPath": "spritesheet.png"
+}

@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
     var pickers: [NSPopUpButton] = []
     var modelLabels: [NSTextField] = []
     var actionLabels: [NSTextField] = []
+    var battleStatsLabels: [NSTextField] = []
     var animationFrame = 0
     var shown = false
     var screenAsleep = false
@@ -155,6 +156,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
             modelLabels.append(modelLabel)
             let actionLabel = label("Waiting for activity…", x: x, y: 157, width: 252, size: 11, color: tool.color)
             actionLabel.lineBreakMode = .byTruncatingMiddle; actionLabels.append(actionLabel)
+            let stats = label("", x:x, y:133, width:260, size:9, color:.systemMint)
+            stats.lineBreakMode = .byTruncatingMiddle; stats.isHidden = true; battleStatsLabels.append(stats)
         }
         statusText = label("Connecting to local activity…", x: 35, y: 126, width: 830, size: 11, color: .secondaryLabelColor)
         button("Try animations", x: 30, y: 78, width: 143, action: #selector(startDemo))
@@ -166,21 +169,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
     }
     func refresh() {
         if let battle {
-            hintText.stringValue = "Tap a fighter to cheer + shield. Tap empty ground to dash. Tap LIVE at the right to return to coding."
-            modeText.stringValue = "COMPANION BATTLE · ROUND \(battle.round) · \(shown ? "TOUCH BAR SHOWN" : "TOUCH BAR HIDDEN")"
+            battle.syncLive(from: model)
+            statusText.frame.origin.y = 108
+            hintText.stringValue = "Tap a fighter: shield + special. Empty ground: dash. Labels stay with their fighter; full details below. LIVE exits."
+            modeText.stringValue = "LIVE BATTLE · ROUND \(battle.round) · \(shown ? "TOUCH BAR SHOWN" : "TOUCH BAR HIDDEN")"
             statusText.stringValue = battle.caption
             for (i, tool) in Tool.allCases.enumerated() {
                 pickers[i].isEnabled = false
                 let fighter = battle.fighters.first { $0.tool == tool }!
-                modelLabels[i].stringValue = "HP \(fighter.health)/100 · Wins \(battle.scores[tool, default: 0])"
-                modelLabels[i].toolTip = "Fictional game stats"
-                modelLabels[i].setAccessibilityLabel("\(tool.title) battle health: \(fighter.health), wins: \(battle.scores[tool, default: 0])")
-                actionLabels[i].stringValue = fighter.health == 0 ? "Knocked out · back next round" : battle.selected == tool ? "Your fighter · tap to boost" : "Autobattling · tap to cheer"
-                actionLabels[i].setAccessibilityLabel(actionLabels[i].stringValue)
+                let activity = battle.live[tool]!
+                pickers[i].selectItem(at: Mood.allCases.firstIndex(of: activity.mood)!)
+                let effort = activity.effort.map { " · " + $0 } ?? ""
+                modelLabels[i].stringValue = activity.modelName + effort
+                modelLabels[i].toolTip = model.modelDetail(for: tool)
+                modelLabels[i].setAccessibilityLabel("\(tool.title) live model: \(activity.modelName + effort)")
+                actionLabels[i].stringValue = activity.caption
+                actionLabels[i].toolTip = activity.caption
+                actionLabels[i].setAccessibilityLabel("\(tool.title) live action: \(activity.caption)")
+                let stats = "HP \(fighter.health) · Energy \(Int(fighter.energy)) · Wins \(battle.scores[tool, default:0]) · Work \(elapsedText(fighter.workSeconds))"
+                let idle = fighter.idleSeconds > 1 ? " · Idle \(elapsedText(fighter.idleSeconds))" : ""
+                battleStatsLabels[i].isHidden = false
+                battleStatsLabels[i].stringValue = stats + idle
+                battleStatsLabels[i].setAccessibilityLabel("\(tool.title) game stats: \(stats + idle)")
+                battleStatsLabels[i].toolTip = stats + idle + " (work and idle time observed while the arena is open; fictional game stats)"
+
             }
             preview.needsDisplay = true; barView.needsDisplay = true
             return
         }
+        statusText.frame.origin.y = 126
+        for stats in battleStatsLabels { stats.isHidden = true }
         hintText.stringValue = "Tap a companion to visit its app. Tap empty space to call one over."
         for picker in pickers { picker.isEnabled = true }
         let moods = model.moods
@@ -214,8 +232,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTouchBarDelegate, NS
         for view in [barView, preview] { view.setAccessibilityLabel("Companion playground. Tap a companion to visit its coding app.") }
     }
     @objc func startBattle() {
-        cycle = false
+        cycle = false; model.demo = false; model.poll()
         let game = CompanionBattle(seed: UInt64(Date().timeIntervalSince1970 * 1000))
+        game.syncLive(from: model)
         battle = game; barView.battle = game; preview.battle = game
         for view in [barView, preview] { view.setAccessibilityLabel("Companion battle. Tap a fighter to shield and attack. Tap empty ground to dash. Tap LIVE at the right to return to coding activity.") }
         refresh()

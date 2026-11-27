@@ -119,6 +119,7 @@ if arguments.contains("--self-test") {
             check(game.fighters.allSatisfy { (0...100).contains($0.health) && (0.05...0.95).contains($0.x) }, "fighters stay in bounds with valid health")
         }
         check(game.phase == .finished && game.winner != nil, "autonomous rounds always finish")
+        check(game.winner.map { winner in game.fighters.contains { $0.tool == winner } } == true, "winner belongs to the fighter roster")
         check(game.fighters.contains { $0.health < 100 }, "shots actually damage fighters")
         check(game.scores.values.reduce(0,+) == 1, "one score awarded per round")
         game.advance(4.1)
@@ -139,6 +140,59 @@ if arguments.contains("--self-test") {
     let first = CompanionBattle(seed: 123), second = CompanionBattle(seed: 123)
     for _ in 0..<300 { first.advance(1.0/60); second.advance(1.0/60) }
     check(first.fighters.map { $0.health } == second.fighters.map { $0.health } && first.fighters.map { $0.x } == second.fighters.map { $0.x }, "seeded battles reproduce deterministically")
+    let liveGame = CompanionBattle(seed: 71)
+    let observations: [Tool: CompanionBattle.LiveActivity] = [
+        .codex: .init(mood:.working, modelName:"fixture-codex", caption:"Testing", action:.testing),
+        .claude: .init(mood:.resting, modelName:"Last: fixture-claude", caption:"Idle", action:.thinking),
+        .antigravity: .init(mood:.attention, modelName:"fixture-gemini", caption:"Waiting · approval", action:.waiting)
+    ]
+    liveGame.updateLive(observations); liveGame.advance(10)
+    let worker = liveGame.fighters.first { $0.tool == .codex }!
+    let idler = liveGame.fighters.first { $0.tool == .claude }!
+    let waiting = liveGame.fighters.first { $0.tool == .antigravity }!
+    check(worker.energy > 79 && worker.workSeconds > 9.9, "observed working time charges energy")
+    check(idler.energy < 21 && idler.idleSeconds > 9.9, "idle time drains energy")
+    check(abs(waiting.energy - 50) < 0.01, "approval waiting does not drain energy")
+    check(liveGame.power(worker) > liveGame.power(idler), "working fighters attack harder and faster")
+    check(liveGame.incomingDamage(10, for:idler) > liveGame.incomingDamage(10, for:worker), "idle fighters take extra damage")
+    var resumed = observations
+    resumed[.claude] = .init(mood:.working,modelName:"fixture-claude",caption:"Editing",action:.editing)
+    liveGame.updateLive(resumed); liveGame.advance(1)
+    check(liveGame.fighters.first { $0.tool == .claude }!.idleSeconds == 0, "resuming work clears idle timer immediately")
+    liveGame.advance(100)
+    check(liveGame.fighters.allSatisfy { (0...100).contains($0.energy) }, "energy stays bounded across rematches")
+    let loadingBattle = CompanionBattle()
+    loadingBattle.syncLive(from:PlaygroundModel()); loadingBattle.advance(5)
+    check(loadingBattle.fighters.allSatisfy { abs($0.energy-50)<0.01 && $0.idleSeconds == 0 }, "source warmup never penalizes tools as idle")
+    check(loadingBattle.live[.codex]?.modelName == "Connecting…", "source warmup is distinct from unavailable metadata")
+    check(PlaygroundModel.date("2026-11-27T15:00:00.123Z") != nil && PlaygroundModel.date("2026-11-27T15:00:00Z") != nil, "cached timestamp parsing supports fractional and whole seconds")
+    let observedModel = PlaygroundModel()
+    observedModel.activities = ["fixture": Activity(tool:.codex,session:"fixture",state:.working,time:now,modelName:"reported-model",effort:"high",progress:WorkProgress(action:.reading,detail:"Fixture.swift",actionStartedAt:now-2))]
+    let observedBattle = CompanionBattle()
+    observedBattle.syncLive(from:observedModel)
+    check(observedBattle.live[.codex]?.modelName == "reported-model" && observedBattle.live[.codex]?.effort == "high", "battle keeps reported model and effort")
+    check(observedBattle.live[.codex]?.caption.contains("Fixture.swift") == true, "battle preserves the live action caption")
+    check(observedBattle.live[.claude]?.modelName == "Model unavailable", "missing model metadata stays unavailable")
+    for centers in [[Tool.codex:80.0,.claude:320.0,.antigravity:560.0], [.codex:300,.claude:325,.antigravity:350]] {
+        let tags=BattleTagLayout.make(centers:centers,width:685)
+        check(Set(tags.map(\.tool)) == Set(Tool.allCases), "each fighter retains its own attached label")
+        for tag in tags {
+            check(tag.x >= 0 && tag.x+tag.width <= 641, "attached labels stay inside the strip")
+            let owner=centers[tag.tool]!
+            check(tag.leftSide ? abs(tag.x+tag.width-(owner-18))<0.01 : abs(tag.x-(owner+20))<0.01, "labels remain adjacent to the owning avatar")
+        }
+        let visible=tags.filter { $0.width >= 28 }.sorted { $0.x < $1.x }
+        for i in 1..<visible.count { check(visible[i-1].x+visible[i-1].width <= visible[i].x, "neighbour labels never overlap") }
+    }
+    // Check every fighter can cross the old lane boundaries, not only a shared team envelope.
+    let roaming = CompanionBattle(seed: 8)
+    var minima = [Double](repeating:1,count:3), maxima = [Double](repeating:0,count:3)
+    for _ in 0..<4800 {
+        roaming.advance(1.0/60)
+        for i in 0..<3 { minima[i] = min(minima[i],roaming.fighters[i].x); maxima[i] = max(maxima[i],roaming.fighters[i].x) }
+    }
+    check((0..<3).allSatisfy { minima[$0] < 0.18 && maxima[$0] > 0.82 }, "all three fighters roam both ends of the arena")
+    print("PASS: live models/actions, work charging, idle drain/damage, approval protection, attached metadata and full-width roaming")
     print("PASS: 30 autonomous battles, collision damage, winner scores, rematches, shields, cooldowns, dash bounds and deterministic replay")
     try FileManager.default.removeItem(at: dir)
     print("PASS: models, aggregation, layout, action clocks, recap evidence, deduplication and open-app idle presence")
@@ -148,6 +202,16 @@ if let index = arguments.firstIndex(of: "--render-battle"), arguments.count > in
     _ = NSApplication.shared
     let model = PlaygroundModel()
     let game = CompanionBattle(seed: 42)
+    if arguments.contains("--example-live") {
+        let now = Date().timeIntervalSince1970
+        model.openTools = [.codex, .claude, .antigravity]
+        model.activities = [
+            "example-codex":Activity(tool:.codex,session:"example",state:.working,time:now,modelName:"example-codex-model",progress:WorkProgress(action:.testing,actionStartedAt:now-3)),
+            "example-claude":Activity(tool:.claude,session:"example",state:.idle,time:now,modelName:"example-claude-model"),
+            "example-gemini":Activity(tool:.antigravity,session:"example",state:.working,time:now,modelName:"example-gemini-model",progress:WorkProgress(action:.editing,detail:"Example.swift",actionStartedAt:now-8))
+        ]
+        game.syncLive(from:model)
+    }
     let seconds = arguments.firstIndex(of: "--at").flatMap { arguments.count > $0 + 1 ? Double(arguments[$0+1]) : nil } ?? 4
     game.advance(seconds)
     let view = PlaygroundView(model: model); view.battle = game

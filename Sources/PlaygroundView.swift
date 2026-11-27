@@ -235,7 +235,7 @@ final class PlaygroundView: NSView {
             if x > width - 42 { onExitBattle?(); return }
             if let tool = Tool.allCases.min(by: { abs((positions[$0] ?? 0)+11-x) < abs((positions[$1] ?? 0)+11-x) }), abs((positions[tool] ?? 0)+11-x) < 24 {
                 battle.cheer(tool)
-            } else { battle.dash(to: (x-112)/max(80,width-160)) }
+            } else { let arena = CompanionBattle.arena(width: width); battle.dash(to: (x-arena.left)/arena.span) }
             needsDisplay = true; return
         }
         if let tool = Tool.allCases.min(by: { abs((positions[$0] ?? 0) + 10 - x) < abs((positions[$1] ?? 0) + 10 - x) }) {

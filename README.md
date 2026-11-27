@@ -12,7 +12,7 @@ shown above the native Touch Bar surface.*
 
 ## Play a round of Pixel Arena
 
-Choose **Battle!** in the app to watch the companions fight a playful local battle on the Touch Bar. Tap a fighter to shield it and trigger a special; tap empty ground to dash and fire. Health, winner celebrations and round scores are shared with the desktop preview. Tap **LIVE** to return to coding activity. [Controls and details](docs/BATTLE.md).
+Choose **Battle!** in the app to watch the companions fight a playful local battle on the Touch Bar. Tap a fighter to shield it and trigger a special; tap empty ground to dash and fire. Compact live model/action labels stay attached to their own moving avatars, collapsing details during close passes. Working charges energy; idle drains it and increases incoming damage. All three fighters roam the full strip. Health, energy, winner celebrations and scores are shared with the desktop preview. Tap **LIVE** to return to coding activity. [Controls and details](docs/BATTLE.md).
 
 ## What you get
 

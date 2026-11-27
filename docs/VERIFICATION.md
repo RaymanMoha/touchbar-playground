@@ -37,3 +37,13 @@ the native drawing code. The exported loop was checked for changing frames,
 reading/attention/completion/idle phases and complete, unobscured character
 studies. It uses synthetic data and does not read a live session or screenshot
 the user's desktop.
+
+## Live Pixel Arena (v1.5)
+
+- Thirty seeded rounds check damage, bounded state, winner selection and scores, rematches, shields and input cooldowns.
+- Energy tests distinguish working, open idle, sleeping and approval-wait states; work increases power, idle increases incoming damage, and startup warmup has no idle penalty.
+- Each fighter crosses the previous lane boundaries and visits both ends of the playable strip in a deterministic run.
+- Model/effort and action captions retain their owning tool; missing metadata is not guessed. Each label stays attached to its owning avatar, including winner celebrations. Crowded and spread-out layout checks cover ownership, adjacency, bounds and label non-overlap.
+- Native 685 × 30 strip rendering was reviewed with clearly labelled example metadata for both working and idle states.
+- Installed desktop preview confirmed actual reported Codex and Antigravity models/actions, per-tool energy and scores, plus entry/exit and selection controls. Claude had no model metadata in the observed session and was shown as unavailable.
+- First-scan warmup is explicitly labelled Connecting. Sprite atlas decoding is cached before frame cropping to avoid repeated PNG decompression during animation.

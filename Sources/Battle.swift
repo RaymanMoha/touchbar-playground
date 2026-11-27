@@ -4,6 +4,14 @@ import AppKit
 // never modify coding-tool activity, hooks, permissions or running processes.
 final class CompanionBattle {
     enum Phase { case ready, fighting, finished }
+    struct LiveActivity {
+        var mood: Mood
+        var modelName: String
+        var caption: String
+        var action: WorkAction
+        var effort: String? = nil
+        var isLoading = false
+    }
     struct Fighter {
         let tool: Tool
         var x: Double
@@ -14,12 +22,16 @@ final class CompanionBattle {
         var boostReady = 0.0
         var attackUntil = 0.0
         var facingLeft = false
+        var energy = 50.0
+        var workSeconds = 0.0
+        var idleSeconds = 0.0
     }
     struct Shot {
         let owner: Tool
         var x: Double
         let speed: Double
         let high: Bool
+        let damage: Int
     }
     struct Spark { let x: Double; let tool: Tool; let until: Double; let blocked: Bool }
     private(set) var fighters: [Fighter] = []
@@ -32,6 +44,41 @@ final class CompanionBattle {
     private(set) var winner: Tool?
     private(set) var scores: [Tool: Int] = [:]
     private(set) var selected: Tool = .codex
+    private(set) var live: [Tool: LiveActivity] = [:]
+    // Shared geometry gives every fighter the full playable width and keeps taps
+    // aligned between the physical strip and the scaled desktop preview.
+    static func arena(width: Double) -> (left: Double, span: Double) { (12, max(80, width - 60)) }
+    func syncLive(from model: PlaygroundModel) {
+        let moods = model.moods
+        let t = model.animationTime
+        let loading = !model.hasLoadedActivity && model.activities.isEmpty
+        var observations: [Tool: LiveActivity] = [:]
+        for tool in Tool.allCases {
+            let mood = moods[tool, default: .idle]
+            let progress = model.workProgress(for: tool, time: t)
+            var name = loading ? "Connecting…" : model.modelLabel(for: tool, time: t)
+            if !loading, [.idle, .resting].contains(mood), name != "Model unavailable" { name = "Last: " + name }
+            observations[tool] = LiveActivity(mood: mood, modelName: name, caption: loading ? "Loading local activity…" : model.actionCaption(for: tool, time: t), action: progress?.action ?? .thinking, effort: model.displayActivity(for: tool, time: t)?.effort, isLoading: loading)
+        }
+        updateLive(observations)
+    }
+    func updateLive(_ observations: [Tool: LiveActivity]) {
+        for i in fighters.indices {
+            if live[fighters[i].tool]?.mood != observations[fighters[i].tool]?.mood { fighters[i].idleSeconds = 0 }
+        }
+        live = observations
+    }
+    func power(_ fighter: Fighter) -> Double {
+        guard let activity = live[fighter.tool], !activity.isLoading else { return 1 }
+        let workBoost = activity.mood == .working ? 1.15 : activity.mood == .finished ? 1.1 : 1
+        return (0.65 + fighter.energy / 100 * 0.8) * workBoost
+    }
+    func incomingDamage(_ amount: Int, for fighter: Fighter) -> Int {
+        guard let activity = live[fighter.tool], !activity.isLoading else { return amount }
+        let mood = activity.mood
+        let multiplier = mood == .idle ? 1.6 : mood == .resting ? 1.35 : 1
+        return max(1, Int((Double(amount) * multiplier).rounded()))
+    }
     private var seed: UInt64
     init(seed: UInt64 = 42) { self.seed = seed; resetRound() }
     private func random() -> Double {
@@ -41,13 +88,18 @@ final class CompanionBattle {
     private func resetRound() {
         phase = .ready; phaseTime = 0; winner = nil
         shots.removeAll(); sparks.removeAll()
-        fighters = Tool.allCases.enumerated().map { Fighter(tool: $0.element, x: [0.15,0.5,0.85][$0.offset], cooldown: 0.15 + random() * 0.9) }
+        let previous = Dictionary(uniqueKeysWithValues: fighters.map { ($0.tool, $0) })
+        fighters = Tool.allCases.enumerated().map {
+            var fighter = Fighter(tool: $0.element, x: [0.15,0.5,0.85][$0.offset], cooldown: 0.15 + random() * 0.9)
+            if let old = previous[fighter.tool] { fighter.energy = old.energy; fighter.workSeconds = old.workSeconds; fighter.idleSeconds = old.idleSeconds }
+            return fighter
+        }
     }
     func restart() { round += 1; resetRound() }
     var caption: String {
         switch phase {
         case .ready: return "Round \(round) · ready… Tap a fighter to cheer and give a shield."
-        case .fighting: return "Tap a fighter: shield + special attack. Tap empty ground: your fighter dashes and fires."
+        case .fighting: return live.isEmpty ? "Practice battle · Tap a fighter to shield and attack." : "Live activity powers the game · working charges energy; idle takes extra damage · tap a fighter to boost."
         case .finished: return "\(winner?.title ?? "Everyone") wins round \(round)! Next round in \(max(1, 4 - Int(phaseTime)))s · Live activity exits the arena."
         }
     }
@@ -59,10 +111,11 @@ final class CompanionBattle {
         guard fighters[index].health > 0,
               let target = fighters.indices.filter({ $0 != index && fighters[$0].health > 0 }).min(by: { abs(fighters[$0].x-fighters[index].x) < abs(fighters[$1].x-fighters[index].x) }) else { return }
         let direction = fighters[target].x < fighters[index].x ? -1.0 : 1.0
+        let damage = max(3, Int((Double(7 + Int(random() * 5)) * power(fighters[index])).rounded()))
         fighters[index].facingLeft = direction < 0
         fighters[index].attackUntil = time + 0.22
-        shots.append(Shot(owner: fighters[index].tool, x: fighters[index].x + direction * 0.025, speed: direction * (special ? 1.45 : 0.9), high: random() > 0.5))
-        if special { shots.append(Shot(owner: fighters[index].tool, x: fighters[index].x + direction * 0.01, speed: direction * 1.15, high: true)) }
+        shots.append(Shot(owner: fighters[index].tool, x: fighters[index].x + direction * 0.025, speed: direction * (special ? 1.45 : 0.9), high: random() > 0.5, damage: damage))
+        if special { shots.append(Shot(owner: fighters[index].tool, x: fighters[index].x + direction * 0.01, speed: direction * 1.15, high: true, damage: damage)) }
     }
     func cheer(_ tool: Tool) {
         selected = tool
@@ -86,18 +139,34 @@ final class CompanionBattle {
     private func tick(_ dt: Double) {
         time += dt; phaseTime += dt
         sparks.removeAll { $0.until <= time }
+        for i in fighters.indices {
+            guard let activity = live[fighters[i].tool], !activity.isLoading else { continue }
+            switch activity.mood {
+            case .working:
+                fighters[i].energy = min(100, fighters[i].energy + dt * 3)
+                fighters[i].workSeconds += dt; fighters[i].idleSeconds = 0
+            case .resting, .idle:
+                fighters[i].idleSeconds += dt
+                fighters[i].energy = max(0, fighters[i].energy - dt * (activity.mood == .idle ? 5 : 3))
+            case .attention: break // Waiting for a human approval must not drain energy.
+            case .finished: fighters[i].energy = min(100, fighters[i].energy + dt)
+            }
+        }
         if phase == .ready { if phaseTime >= 1.5 { phase = .fighting; phaseTime = 0 }; return }
         if phase == .finished { if phaseTime >= 4 { restart() }; return }
         for i in fighters.indices where fighters[i].health > 0 {
             guard let enemy = fighters.indices.filter({ $0 != i && fighters[$0].health > 0 }).min(by: { abs(fighters[$0].x-fighters[i].x) < abs(fighters[$1].x-fighters[i].x) }) else { continue }
             let distance = fighters[enemy].x - fighters[i].x
             let direction = distance < 0 ? -1.0 : 1.0
-            let velocity = abs(distance) > 0.23 ? direction * 0.14 : sin(time * 2.5 + Double(i) * 2) * 0.045
+            // Independent roaming goals sweep from one edge to the other;
+            // opponents can pass each other instead of being trapped in lanes.
+            let goal = 0.5 + 0.47 * sin(time * 0.24 + Double(i) * 2.1)
+            let velocity = min(0.23, max(-0.23, (goal - fighters[i].x) * 1.2))
             fighters[i].x = min(0.95, max(0.05, fighters[i].x + velocity * dt))
             fighters[i].facingLeft = direction < 0
             fighters[i].cooldown -= dt
             if fighters[i].cooldown <= 0 {
-                fire(i); fighters[i].cooldown = 0.65 + random() * 0.65
+                fire(i); fighters[i].cooldown = (0.65 + random() * 0.65) / power(fighters[i])
             }
         }
         var remaining: [Shot] = []
@@ -107,9 +176,9 @@ final class CompanionBattle {
             let targets = fighters.indices.filter { fighters[$0].tool != shot.owner && fighters[$0].health > 0 }.sorted { abs(fighters[$0].x-old) < abs(fighters[$1].x-old) }
             for i in targets where min(old,shot.x)-0.016 <= fighters[i].x && max(old,shot.x)+0.016 >= fighters[i].x {
                 let blocked = fighters[i].shieldUntil > time
-                let dodged = !shot.high && jump(i) > 3.5
+                let dodged = !shot.high && jump(i) > 3.5 && (live[fighters[i].tool]?.mood != .idle)
                 if dodged { continue }
-                if !blocked { fighters[i].health = max(0, fighters[i].health - (7 + Int(random() * 5))); fighters[i].hitUntil = time + 0.2 }
+                if !blocked { fighters[i].health = max(0, fighters[i].health - incomingDamage(shot.damage, for: fighters[i])); fighters[i].hitUntil = time + 0.2 }
                 sparks.append(Spark(x:fighters[i].x,tool:shot.owner,until:time+0.25,blocked:blocked))
                 collided = true; break
             }
@@ -127,24 +196,20 @@ final class CompanionBattle {
 
 extension PlaygroundView {
     func drawBattle(_ battle: CompanionBattle, width: Double) {
-        let left = 112.0, arena = max(80, width - 160)
+        let geometry = CompanionBattle.arena(width: width)
+        let left = geometry.left, arena = geometry.span
         let t = battle.time
         func label(_ value: String, _ x: Double, _ y: Double, _ color: NSColor = .white, _ size: CGFloat = 7) {
             text(value, at:NSPoint(x:x,y:y),size:size,color:color)
         }
         NSColor(white:0.13,alpha:1).setFill(); NSRect(x:left,y:28,width:arena,height:1).fill()
-        label("PIXEL ARENA",5,1,.systemYellow,8)
-        let phase = battle.phase == .ready ? "READY" : battle.phase == .finished ? "WINNER!" : "FIGHT!"
-        label("R\(battle.round) · \(phase)",5,12,.white,7)
-        let scores = Tool.allCases.map { String(battle.scores[$0,default:0]) }.joined(separator:" / ")
-        label(scores,5,22,.lightGray,6)
         label("LIVE",width-31,9,.systemMint,8)
         for i in battle.fighters.indices {
             let f = battle.fighters[i]
             let x = left + f.x * arena - 11
             let defeated = f.health <= 0
             let victorious = battle.phase == .finished && battle.winner == f.tool
-            let spriteScale = 0.9
+            let spriteScale = 0.8
             let spriteHeight = (f.tool == .antigravity ? 26.0 : f.tool == .claude ? 15.6 : 21.6) * spriteScale
             let y = 29 - spriteHeight
             let bounce = victorious ? abs(sin(t*8))*4 : battle.jump(i)
@@ -152,15 +217,18 @@ extension PlaygroundView {
                 NSColor.systemMint.withAlphaComponent(0.55).setStroke()
                 let ring=NSBezierPath(ovalIn:NSRect(x:x-4,y:1,width:30,height:28)); ring.lineWidth=1; ring.stroke()
             }
-            if !defeated || Int(t*3)%2 == 0 {
+            do {
                 NSGraphicsContext.saveGraphicsState()
-                let pose = NSAffineTransform(); pose.translateX(by: x+1, yBy: max(3, y-bounce)); pose.scale(by: spriteScale); pose.concat()
+                let pose = NSAffineTransform(); pose.translateX(by: x+1, yBy: max(5, y-bounce)); pose.scale(by: spriteScale); pose.concat()
                 PixelArt.draw(f.tool,mood:defeated ? .idle : victorious ? .finished : .working,x:0,y:0,time:t,walking:!defeated && battle.phase == .fighting,facingLeft:f.facingLeft,failed:f.hitUntil>t)
                 NSGraphicsContext.restoreGraphicsState()
             }
             NSColor.darkGray.setFill(); NSRect(x:x-1,y:0,width:24,height:2).fill()
             (f.health < 30 ? NSColor.systemOrange : f.tool.color).setFill()
             NSRect(x:x-1,y:0,width:24*Double(f.health)/100,height:2).fill()
+            NSColor.darkGray.setFill(); NSRect(x:x-1,y:3,width:24,height:1).fill()
+            NSColor.systemMint.setFill(); NSRect(x:x-1,y:3,width:24*f.energy/100,height:1).fill()
+            if f.tool == battle.selected { label("·",x-6,16,.systemMint,8) }
             if f.hitUntil > t { label("✦",x+19,10,.systemYellow,9) }
             if f.attackUntil > t { label(f.tool == .codex ? ">_" : f.tool == .claude ? "*" : "✧", x+(f.facingLeft ? -8 : 23),7,f.tool.color,8) }
             if victorious {
@@ -179,6 +247,61 @@ extension PlaygroundView {
         }
         for spark in battle.sparks {
             label(spark.blocked ? "◇" : "✦",left+spark.x*arena-5,10,spark.blocked ? .systemMint : .systemYellow,10)
+        }
+        let centers = Dictionary(uniqueKeysWithValues: battle.fighters.map { ($0.tool, left + $0.x * arena) })
+        for tag in BattleTagLayout.make(centers:centers, width:width) {
+            let fighter = battle.fighters.first { $0.tool == tag.tool }!
+            let activity = battle.live[tag.tool]
+            let name = tag.tool == .antigravity ? "Anti" : tag.tool == .claude ? "Claude" : "Codex"
+            if tag.width < 28 {
+                // During a close pass, keep a tiny owner badge; the full live
+                // model/action remains in the fixed desktop card for this tool.
+                let badge = tag.tool == .codex ? "CX" : tag.tool == .claude ? "CL" : "AG"
+                label(badge,centers[tag.tool]!-7,21,tag.tool.color,5)
+                continue
+            }
+            tag.tool.color.withAlphaComponent(0.6).setStroke()
+            let tether=NSBezierPath(); tether.move(to:NSPoint(x:tag.tetherStart,y:15)); tether.line(to:NSPoint(x:tag.tetherEnd,y:15)); tether.lineWidth=1; tether.stroke()
+            func info(_ value:String, y:Double, color:NSColor, size:CGFloat = 7) {
+                let paragraph=NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingMiddle
+                paragraph.alignment = tag.leftSide ? .right : .left
+                NSGraphicsContext.current?.shouldAntialias = true
+                (value as NSString).draw(in:NSRect(x:tag.x,y:y,width:tag.width,height:10),withAttributes:[.font:NSFont.monospacedSystemFont(ofSize:size,weight:.medium),.foregroundColor:color,.paragraphStyle:paragraph])
+                NSGraphicsContext.current?.shouldAntialias = false
+            }
+            let won = battle.phase == .finished && battle.winner == tag.tool
+            let identity = (won ? "★ " : "") + name
+            let stats = tag.width >= 90 ? " H\(fighter.health) E\(Int(fighter.energy)) W\(battle.scores[tag.tool,default:0])" : tag.width >= 55 ? " H\(fighter.health)" : ""
+            info(identity+stats,y:0,color:tag.tool.color)
+            let modelName = activity?.modelName == "Model unavailable" ? "no model reported" : activity?.modelName ?? "practice"
+            info(modelName,y:10,color:.white,size:6.8)
+            let caption = won ? "Round \(battle.round) winner!" : fighter.health == 0 ? "KO · next round" : activity?.caption ?? "Practice fight"
+            info(caption,y:20,color:fighter.health == 0 ? .gray : .systemMint,size:6.8)
+        }
+    }
+}
+
+// Text stays adjacent to its owning avatar. Neighbour midpoints prevent labels
+// from colliding; close passes collapse details instead of moving them elsewhere.
+struct BattleTagLayout {
+    let tool: Tool
+    let x: Double
+    let width: Double
+    let leftSide: Bool
+    let tetherStart: Double
+    let tetherEnd: Double
+    static func make(centers: [Tool:Double], width: Double) -> [BattleTagLayout] {
+        let ordered=centers.sorted { $0.value < $1.value }
+        return ordered.enumerated().map { index, entry in
+            let center=entry.value
+            let lower=index == 0 ? 3 : (ordered[index-1].value+center)/2
+            let upper=index == ordered.count-1 ? width-44 : (ordered[index+1].value+center)/2
+            let before=max(0,center-18-lower-3)
+            let after=max(0,upper-center-20-3)
+            let isLeft=before > after
+            let available=min(140,isLeft ? before : after)
+            let x=isLeft ? center-18-available : center+20
+            return BattleTagLayout(tool:entry.key,x:x,width:available,leftSide:isLeft,tetherStart:isLeft ? center-13 : center+13,tetherEnd:isLeft ? center-17 : center+19)
         }
     }
 }

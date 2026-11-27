@@ -243,11 +243,12 @@ if arguments.contains("--self-test") {
     for seed in 1...12 {
         let game=CompanionBattle(seed:UInt64(seed),mode:.boss)
         var states:[Tool:CompanionBattle.LiveActivity]=[:]
-        for tool in Tool.allCases { states[tool] = .init(mood:seed<=6 ? .working : .idle,modelName:"fixture",caption:"fixture",action:.thinking) }
+        for tool in Tool.allCases { states[tool] = .init(mood:seed<=6 || tool != .claude ? .working : .idle,modelName:"fixture",caption:"fixture",action:.thinking) }
         game.updateLive(states)
         var steps=0
         while game.phase != .finished && steps < 6000 {
             game.advance(1.0/60); steps += 1
+            if seed<=6 && steps%120 == 0 { game.cheer(.codex) }
             check((0...game.boss!.maxHealth).contains(game.boss!.health), "boss health stays bounded")
             check(game.fighters.allSatisfy { (0...100).contains($0.health) }, "party health stays bounded")
         }

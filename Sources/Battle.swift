@@ -12,6 +12,7 @@ final class CompanionBattle {
         var hitUntil = 0.0
         var exposedUntil = 0.0
         var defeated = false
+        var attackIndex = 0
     }
     let mode: Mode
     private(set) var boss: BugBoss?
@@ -141,7 +142,7 @@ final class CompanionBattle {
         shots.removeAll(); sparks.removeAll()
         combo = 0; comboUntil = 0
         if mode == .boss {
-            let health=600 + min(240,(round-1)*35)
+            let health=600 + min(240,teamWins*35)
             boss=BugBoss(health:health,maxHealth:health)
             lastMove="Wave \(round) · the bug is waking up"
         }
@@ -157,7 +158,7 @@ final class CompanionBattle {
         if mode == .boss, let boss {
             switch phase {
             case .ready: return "BUG BOSS · Wave \(round) · \(boss.health) HP · work actions charge team combos"
-            case .fighting: return "BUG \(boss.health)/\(boss.maxHealth) HP · Combo ×\(combo) · \(lastMove)"
+            case .fighting: return "BUG \(boss.health)/\(boss.maxHealth) HP · \(Double(boss.health)/Double(boss.maxHealth)<0.3 ? "ENRAGED · " : "")Combo ×\(combo) · \(lastMove)"
             case .finished: return "\(boss.defeated ? "PARTY VICTORY!" : "Bug wins — regroup!") · Team \(teamWins) : Bug \(bossWins) · next wave in \(max(1,6-Int(phaseTime)))s"
             }
         }
@@ -294,9 +295,17 @@ final class CompanionBattle {
         guard boss!.nextAttack <= 0 else { return }
         let alive=fighters.filter { $0.health>0 }; guard !alive.isEmpty else { return }
         let target=alive[Int(random()*Double(alive.count)) % alive.count]
-        let direction=target.x < bossX ? -1.0 : 1.0
-        shots.append(Shot(owner:.codex,x:bossX+direction*0.03,speed:direction*0.65,high:random()>0.4,damage:8,hostile:true))
-        boss!.nextAttack=1.05
+        boss!.attackIndex += 1
+        let enraged=Double(boss!.health)/Double(boss!.maxHealth) < 0.3
+        let spread=boss!.attackIndex % (enraged ? 2 : 3) == 0
+        let directions:[Double] = spread ? [-1,1] : [target.x < bossX ? -1 : 1]
+        let damage=(enraged ? 20 : 14)+min(6,teamWins*2)
+        for direction in directions {
+            // One shot per direction avoids an invisible stacked burst when
+            // several companions happen to stand together on one side.
+            shots.append(Shot(owner:.codex,x:bossX+direction*0.03,speed:direction*(enraged ? 0.95 : 0.72),high:spread || enraged || boss!.attackIndex%2==0,damage:damage,hostile:true))
+        }
+        boss!.nextAttack=enraged ? 0.95 : 1.15
     }
     private func triggerMove(_ tool:Tool, activity:LiveActivity) {
         guard let i=fighters.firstIndex(where: { $0.tool == tool }), fighters[i].health>0 else { return }
@@ -336,20 +345,45 @@ extension PlaygroundView {
     func drawBugBoss(_ battle:CompanionBattle,width:Double) {
         guard let boss=battle.boss else { return }
         let area=CompanionBattle.arena(width:width), x=area.left+battle.bossX*area.span-12
-        let ink=boss.defeated ? NSColor.darkGray : boss.hitUntil>battle.time ? .white : boss.exposedUntil>battle.time ? .systemYellow : .systemRed
-        ink.setFill()
-        NSRect(x:x+4,y:8,width:16,height:13).fill()
-        NSRect(x:x+1,y:11,width:22,height:7).fill()
+        let enraged=Double(boss.health)/Double(boss.maxHealth)<0.3
+        let exposed=boss.exposedUntil>battle.time
+        let shell=boss.defeated ? NSColor.darkGray : exposed ? .systemYellow : enraged ? .systemOrange : .systemRed
+        let dark=NSColor(srgbRed:0.22,green:0.035,blue:0.10,alpha:1)
+        let edge=boss.hitUntil>battle.time ? NSColor.white : shell
+        let eyes=exposed ? NSColor.white : NSColor(srgbRed:0.4,green:1,blue:0.72,alpha:1)
+        // Three jointed legs per side, with alternating stepping motion.
+        shell.setStroke()
         for n in 0..<3 {
-            let step=sin(battle.time*8+Double(n))>0 ? 1.0 : 0
-            NSRect(x:x-2,y:10+Double(n)*5+step,width:5,height:2).fill()
-            NSRect(x:x+21,y:10+Double(n)*5-step,width:5,height:2).fill()
+            let step=sin(battle.time*(enraged ? 13 : 7)+Double(n)*2)>0 ? 1.5 : -0.5
+            for side in [-1.0,1.0] {
+                let inner=x+12+side*7, joint=x+12+side*14, foot=x+12+side*17
+                let y=10+Double(n)*4
+                let leg=NSBezierPath(); leg.move(to:NSPoint(x:inner,y:y)); leg.line(to:NSPoint(x:joint,y:y-2+step)); leg.line(to:NSPoint(x:foot,y:y+1+step)); leg.lineWidth=1.3; leg.stroke()
+            }
         }
-        NSColor.black.setFill(); NSRect(x:x+6,y:11,width:4,height:4).fill(); NSRect(x:x+14,y:11,width:4,height:4).fill()
-        NSColor.darkGray.setFill(); NSRect(x:x-2,y:0,width:28,height:3).fill()
-        ink.setFill(); NSRect(x:x-2,y:0,width:28*Double(boss.health)/Double(boss.maxHealth),height:3).fill()
-        text(boss.defeated ? "KO" : battle.combo>0 && Int(battle.time*2)%2 == 0 ? "×\(battle.combo)" : "\(boss.health)",at:NSPoint(x:x+3,y:22),size:6,color:ink)
-        if battle.phase == .fighting && boss.nextAttack<0.45 { text("!",at:NSPoint(x:x+9,y:3),size:8,color:.systemYellow) }
+        // Split wing armour keeps a strong beetle silhouette even while hit.
+        dark.setFill(); NSBezierPath(roundedRect:NSRect(x:x+2,y:8,width:20,height:14),xRadius:5,yRadius:5).fill()
+        shell.setFill()
+        NSBezierPath(roundedRect:NSRect(x:x+3,y:9,width:8,height:12),xRadius:3,yRadius:3).fill()
+        NSBezierPath(roundedRect:NSRect(x:x+13,y:9,width:8,height:12),xRadius:3,yRadius:3).fill()
+        edge.withAlphaComponent(0.8).setFill(); NSRect(x:x+4,y:10,width:2,height:6).fill(); NSRect(x:x+18,y:10,width:2,height:6).fill()
+        dark.setFill(); NSRect(x:x+5,y:5,width:14,height:8).fill()
+        edge.setStroke()
+        for side in [-1.0,1.0] {
+            let antenna=NSBezierPath(); antenna.move(to:NSPoint(x:x+12+side*4,y:6)); antenna.line(to:NSPoint(x:x+12+side*8,y:3)); antenna.lineWidth=1.2; antenna.stroke()
+            eyes.setFill(); NSRect(x:x+11+side*8,y:2,width:2,height:2).fill()
+        }
+        eyes.setFill(); NSRect(x:x+7,y:7,width:3,height:2).fill(); NSRect(x:x+14,y:7,width:3,height:2).fill()
+        shell.setFill(); let chomp=Int(battle.time*5)%2 == 0 ? 1.0 : 0
+        NSRect(x:x+8-chomp,y:11,width:3,height:2).fill(); NSRect(x:x+13+chomp,y:11,width:3,height:2).fill()
+        if exposed {
+            NSColor.white.setStroke(); let target=NSBezierPath(ovalIn:NSRect(x:x+9,y:14,width:6,height:6)); target.lineWidth=1; target.stroke()
+        }
+        NSColor.darkGray.setFill(); NSRect(x:x-4,y:0,width:32,height:1.5).fill()
+        shell.setFill(); NSRect(x:x-4,y:0,width:32*Double(boss.health)/Double(boss.maxHealth),height:1.5).fill()
+        let caption=boss.defeated ? "BUG KO" : battle.combo>0 && Int(battle.time*2)%2==0 ? "BUG ×\(battle.combo)" : "BUG \(boss.health)"
+        text(caption,at:NSPoint(x:x-2,y:23),size:6,color:shell)
+        if battle.phase == .fighting && boss.nextAttack<0.45 { text("!",at:NSPoint(x:x+24,y:6),size:9,color:.systemYellow) }
     }
     func drawBattle(_ battle: CompanionBattle, width: Double) {
         let geometry = CompanionBattle.arena(width: width)

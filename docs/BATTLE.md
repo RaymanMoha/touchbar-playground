@@ -74,3 +74,11 @@ Health now drains more slowly in both modes: incoming companion hit damage is ap
 At the end of either mode, a sports-style scoreboard slides in. It announces the winner, increments the series score, adds pixel confetti and a next-round countdown, then slides away. Celebrations last six seconds before the next countdown starts. Avatar labels no longer carry win/loss counts; the scoreboard is the place for series scores. The LIVE exit remains accessible at the right throughout.
 
 Additional self-checks cover twelve boss encounters with both outcomes, no party friendly fire, fresh-action abilities, deduplication, old/unknown/failed-result guards, combo chains, encounter scores, wave resets and slower early health loss.
+
+### Boss challenge and identity
+
+The boss uses a beetle silhouette with split wing armour, jointed stepping legs, antennae, bright eyes and a persistent **BUG** label. Its shell stays coloured when hit; the edge flashes instead of turning the whole creature into a white block. Scanning reveals its weak spot, and its low-health phase turns the shell orange.
+
+The bug alternates aimed attacks with a telegraphed two-direction spread. Below 30% health, its attacks become faster and its spread more frequent. One projectile is spawned per direction, avoiding an invisible stack of hits when companions stand together. Boss hits are stronger than ordinary companion shots, while the slower duel balance stays unchanged.
+
+Boss health and attack strength scale with party victories, not with losses. Losing therefore allows another attempt at the same difficulty. Balance checks include engaged parties using shields and an unattended party with two working tools and one sleeping companion, alongside the current-action and scoring guards.
